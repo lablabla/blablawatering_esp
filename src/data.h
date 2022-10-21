@@ -4,7 +4,19 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <sys/time.h>
 
+enum MessageType
+{
+    SET_TIME,
+    MAX,
+};
+
+struct SetTimeMessage
+{
+    struct timeval timeval;
+    std::string tz;
+};
 
 constexpr int8_t NO_DURATION = -1;
 constexpr int8_t START_IMMEDIATELY = -1;
@@ -23,7 +35,7 @@ struct Event
     uint8_t station_id;
     std::string name;
     int64_t start_time;
-    int64_t duration;
+    int64_t end_time;
     bool is_on;
 };
 

@@ -47,6 +47,8 @@ Storage::Storage()
     {
         Event e1 = {0, 0, "Meow1", START_IMMEDIATELY, NO_DURATION, true};
         addEvent(e1);
+        Event e2 = {1, 0, "Meow2", 1666364520, 30, false };
+        addEvent(e2);
     }
 }
 
@@ -123,7 +125,7 @@ bool Storage::loadEvents()
         memset(name, 0, size + 1);
         fread(name, sizeof(char), size, f);
         fread(&e.start_time, sizeof(int64_t), 1, f);      
-        fread(&e.duration, sizeof(int64_t), 1, f);      
+        fread(&e.end_time, sizeof(int64_t), 1, f);      
         fread(&e.is_on, sizeof(bool), 1, f);
         e.name = std::string(name);
         delete[] name;
@@ -284,7 +286,7 @@ bool Storage::setEvents(const std::map<uint32_t, Event>& events)
         fwrite(&size, sizeof(size_t), 1, f);
         fwrite(name, sizeof(char), e.name.length(), f);
         fwrite(&e.start_time, sizeof(int64_t), 1, f);      
-        fwrite(&e.duration, sizeof(int64_t), 1, f);      
+        fwrite(&e.end_time, sizeof(int64_t), 1, f);      
         fwrite(&e.is_on, sizeof(bool), 1, f);
     }
     fclose(f);

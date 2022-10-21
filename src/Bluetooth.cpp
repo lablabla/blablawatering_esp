@@ -16,6 +16,10 @@
 
 static const char* TAG = "Bluetooth";
 
+static std::map<std::string, MessageType> chrToMessage = {
+    { std::string("0x") + std::string(SET_TIME_CHR_UUID), MessageType::SET_TIME}
+};
+
 // JSON Helpers
 static cJSON* stationToJson(const Station& station)
 {
@@ -46,7 +50,7 @@ static cJSON* eventToJson(const Event& event)
     cJSON_AddNumberToObject(object, "station_id", event.station_id);
     cJSON_AddStringToObject(object, "name", event.name.c_str());
     cJSON_AddNumberToObject(object, "start_time", event.start_time);
-    cJSON_AddNumberToObject(object, "duration", event.duration);
+    cJSON_AddNumberToObject(object, "end_time", event.end_time);
     cJSON_AddBoolToObject(object, "is_on", event.is_on);
 
     return object;
@@ -175,27 +179,73 @@ void Bluetooth::start()
     pAdvertising->start();
 }
 
-void Bluetooth::onRead(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo){
+void Bluetooth::onRead(NimBLECharacteristic* pCharacteristic){
     ESP_LOGI(TAG, "%s", pCharacteristic->getUUID().toString().c_str());
     ESP_LOGI(TAG, ": onRead(), value: \n%s\n",pCharacteristic->getValue().c_str());
 
     if (m_pCallback)
     {
-        m_pCallback->onMessageReceived(&pCharacteristic->getValue());
+        auto value = pCharacteristic->getValue();
+        //m_pCallback->onMessageReceived(&value);
     }
 };
 
-void Bluetooth::onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) {
-    ESP_LOGI(TAG, "%s", pCharacteristic->getUUID().toString().c_str());
+void Bluetooth::onWrite(NimBLECharacteristic* pCharacteristic) {
+    std::string characteristicStr = pCharacteristic->getUUID().toString();
+    ESP_LOGI(TAG, "%s", characteristicStr.c_str());
     ESP_LOGI(TAG, ": onWrite(), value: \n%s\n", pCharacteristic->getValue().c_str());
 
-    if (m_pCallback)
+    if (chrToMessage.find(characteristicStr) == chrToMessage.end())
     {
-        m_pCallback->onMessageReceived(&pCharacteristic->getValue());
+        ESP_LOGI(TAG, "Unknown characteristic %s", characteristicStr.c_str());
+        return;
     }
+    MessageType messageType = chrToMessage.at(characteristicStr);
+    ESP_LOGI(TAG, "characteristic %s, message is %d", characteristicStr.c_str(), messageType);
+
+    parseCharacteristicWrite(pCharacteristic, messageType);
 };
 
 void Bluetooth::onNotify(NimBLECharacteristic* pCharacteristic) {
     ESP_LOGI(TAG, "%s", pCharacteristic->getUUID().toString().c_str());
     ESP_LOGI(TAG, ": onNotify(), value: \n%s\n", pCharacteristic->getValue().c_str());
+}
+
+void Bluetooth::parseCharacteristicWrite(NimBLECharacteristic* pCharacteristic, MessageType messageType) const
+{
+    switch(messageType)
+    {
+        case SET_TIME:
+            parseSetTime(pCharacteristic);
+        break;
+
+        default:
+        break;
+    }
+}
+
+void Bluetooth::parseSetTime(NimBLECharacteristic* pCharacteristic) const
+{    
+    if (m_pCallback)
+    {
+        auto value = pCharacteristic->getValue();
+        cJSON *json = cJSON_Parse(value.c_str());
+        if (json == NULL)
+        {
+            const char *error_ptr = cJSON_GetErrorPtr();
+            if (error_ptr != NULL)
+            {
+                ESP_LOGE(TAG, "Error before: %s\n", error_ptr);
+            }
+        }
+        SetTimeMessage message;        
+        auto tv_sec = cJSON_GetObjectItemCaseSensitive(json, "tv_sec");
+        auto tv_usec = cJSON_GetObjectItemCaseSensitive(json, "tv_usec");
+        auto tz_str = cJSON_GetObjectItemCaseSensitive(json, "tz_str");
+        message.timeval.tv_sec = cJSON_IsNumber(tv_sec) ? tv_sec->valueint : 0;
+        message.timeval.tv_usec = cJSON_IsNumber(tv_usec) ? tv_usec->valueint : 0;
+        message.tz = cJSON_IsString(tz_str) ? tz_str->valuestring : "";
+        cJSON_free(json);
+        m_pCallback->onMessageReceived(MessageType::SET_TIME, (void*)&message);
+    }
 }

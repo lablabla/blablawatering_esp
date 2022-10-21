@@ -1,7 +1,9 @@
 #pragma once
 
-    class BlablaCallbacks
-    {
-    public:
-        virtual void onMessageReceived(void* message) = 0;
-    };
+#include "data.h"
+
+class BlablaCallbacks
+{
+public:
+    virtual void onMessageReceived(MessageType messageType, void* message) = 0;
+};

@@ -21,13 +21,16 @@
 
     private:
 
-        void onRead(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override;
-        void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override;
+        void onRead(NimBLECharacteristic* pCharacteristic) override;
+        void onWrite(NimBLECharacteristic* pCharacteristic) override;
         void onNotify(NimBLECharacteristic* pCharacteristic) override;
 
         void setupCharacteristic();
 
         NimBLECharacteristic* getCharacteristicByUUIDs(const char* serviceUuid, const char* characteristicUuid) const;
+
+        void parseCharacteristicWrite(NimBLECharacteristic* pCharacteristic, MessageType messageType) const;
+        void parseSetTime(NimBLECharacteristic* pCharacteristic) const;
 
         NimBLEServer* m_pServer;
         BlablaCallbacks* m_pCallback;

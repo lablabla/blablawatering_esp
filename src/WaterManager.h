@@ -10,6 +10,7 @@
     class Bluetooth;
     class Storage;
     class DS1307;
+    class CronManager;
 
     class WaterManager : public BlablaCallbacks
     {
@@ -17,24 +18,22 @@
         WaterManager();
         ~WaterManager();
 
-        void run();
+        void loop();
 
         // Callbacks
         void onMessageReceived(MessageType messageType, void* message) override;
+        void onEventStateChange(const Event& event, bool newState) override;
     private:
-        static void runTask(void* taskStartParameters);
-        void vTaskCode();
 
         void updateTimeFromRTC();
         void printTimeFromRTC() const;
 
         void setTimeMessage(const SetTimeMessage& timeMessage) const;
 
-        void checkEvents();
-
         std::mutex m_mutex;
         void* m_backgroundTaskHandle;
         Bluetooth* m_bluetooth;
         Storage* m_storage;
         DS1307* m_rtc;
+        CronManager* m_cronManager;
     };

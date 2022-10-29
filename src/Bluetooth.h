@@ -6,32 +6,33 @@
 #include <NimBLEDevice.h>
 
 #include "data.h"
-#include "BlablaCallbacks.h"
 
-    class Bluetooth : public NimBLECharacteristicCallbacks
-    {
-    public:
-        Bluetooth(const std::string& name);
+class BlablaCallbacks;
 
-        void start();
-        void setBluetoothCallbacks(BlablaCallbacks* callbacks);
-        void setStations(const std::map<uint32_t, Station>& stations);
-        void setEvents(const std::map<uint32_t, Event>& events);
-        void notifyStationStateChanged(const Station& station) const;
+class Bluetooth : public NimBLECharacteristicCallbacks
+{
+public:
+    Bluetooth(const std::string& name);
 
-    private:
+    void start();
+    void setBluetoothCallbacks(BlablaCallbacks* callbacks);
+    void setStations(const std::map<uint32_t, Station>& stations);
+    void setEvents(const std::map<uint32_t, Event>& events);
+    void notifyStationStateChanged(const Station& station) const;
 
-        void onRead(NimBLECharacteristic* pCharacteristic) override;
-        void onWrite(NimBLECharacteristic* pCharacteristic) override;
-        void onNotify(NimBLECharacteristic* pCharacteristic) override;
+private:
 
-        void setupCharacteristic();
+    void onRead(NimBLECharacteristic* pCharacteristic) override;
+    void onWrite(NimBLECharacteristic* pCharacteristic) override;
+    void onNotify(NimBLECharacteristic* pCharacteristic) override;
 
-        NimBLECharacteristic* getCharacteristicByUUIDs(const char* serviceUuid, const char* characteristicUuid) const;
+    void setupCharacteristic();
 
-        void parseCharacteristicWrite(NimBLECharacteristic* pCharacteristic, MessageType messageType) const;
-        void parseSetTime(NimBLECharacteristic* pCharacteristic) const;
+    NimBLECharacteristic* getCharacteristicByUUIDs(const char* serviceUuid, const char* characteristicUuid) const;
 
-        NimBLEServer* m_pServer;
-        BlablaCallbacks* m_pCallback;
-    };
+    void parseCharacteristicWrite(NimBLECharacteristic* pCharacteristic, MessageType messageType) const;
+    void parseSetTime(NimBLECharacteristic* pCharacteristic) const;
+
+    NimBLEServer* m_pServer;
+    BlablaCallbacks* m_pCallback;
+};

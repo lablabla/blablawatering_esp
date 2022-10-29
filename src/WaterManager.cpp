@@ -4,35 +4,49 @@
 #include "Storage.h"
 #include "Bluetooth.h"
 #include "DS1307.h"
+#include "CronManager.h"
 
-#include "esp_log.h"
+#include "esp32-hal-log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 #include <time.h>
 
-
-static const char* TAG = "WaterManager";
-
 WaterManager::WaterManager() :
     m_backgroundTaskHandle(nullptr)
 {
-    printf("Initializing storage\n");
-    m_storage = new Storage();
+    log_i("Initializing storage\n");
+    m_storage = new Storage();    
+    for (const auto& station : m_storage->getStations())
+    {
+        // Set station's pin to out        
+        pinMode(station.second.gpio_pin, OUTPUT);
+        
+        // Make sure station is off
+        digitalWrite(station.second.gpio_pin, LOW);
+    }
 
-    printf("Initializing bluetooth\n");
+    log_i("Initializing bluetooth\n");
     m_bluetooth = new Bluetooth("Blabla Watering System");
+    m_bluetooth->setBluetoothCallbacks(this);
     m_bluetooth->start();
 
     
-    printf("Updating stations and events\n");
+    log_i("Updating stations and events\n");
     m_bluetooth->setStations(m_storage->getStations());
     m_bluetooth->setEvents(m_storage->getEvents());
 
-    printf("Initializing RTC\n");
+    log_i("Initializing RTC\n");
     m_rtc = new DS1307();
     m_rtc->begin();
     updateTimeFromRTC();
+
+    log_i("Initialing cron manager\n");
+    m_cronManager = new CronManager();
+    m_cronManager->setCronCallbacks(this);
+    m_cronManager->begin(m_storage->getEvents());
+    log_i("Water Manager initialized\n");
+
 }
 
 WaterManager::~WaterManager()
@@ -40,34 +54,13 @@ WaterManager::~WaterManager()
     delete m_storage;
     delete m_bluetooth;
     delete m_rtc;
+    delete m_cronManager;
 }
 
-void WaterManager::run()
-{
-    xTaskCreate(&WaterManager::runTask, "WaterManagerBackground", 8*1024, this, tskNO_AFFINITY, &m_backgroundTaskHandle);
-}
 
-void WaterManager::runTask(void* taskStartParameters)
+void WaterManager::loop()
 {
-    auto manager = (WaterManager*) taskStartParameters;
-    manager->vTaskCode();
-}
-
-void WaterManager::vTaskCode()
-{
-    m_bluetooth->setBluetoothCallbacks(this);
-    while(true)
-    {
-        checkEvents();
-        {
-            // Station& station = m_stations[0];
-            // station.is_on = !station.is_on;
-            // m_bluetooth->notifyStationStateChanged(station);
-        }
-        vTaskDelay( 500 / portTICK_PERIOD_MS );
-    }
-    
-    vTaskDelete(NULL);
+    m_cronManager->loop();
 }
 
 void WaterManager::updateTimeFromRTC()
@@ -93,13 +86,13 @@ void WaterManager::updateTimeFromRTC()
 void WaterManager::printTimeFromRTC() const
 {
     m_rtc->getTime();    
-    printf("current RTC is set to %02d:%02d:%02d %02d/%02d/%04d\n", m_rtc->hour,
+    log_i("current RTC is set to %02d:%02d:%02d %02d/%02d/%04d\n", m_rtc->hour,
         m_rtc->minute, m_rtc->second, m_rtc->dayOfMonth, m_rtc->month, m_rtc->year+2000);
 }
 
 void WaterManager::onMessageReceived(MessageType messageType, void* message)
 {    
-    ESP_LOGI(TAG, "onMessageReceived with message type %d\n", messageType);
+    log_i("onMessageReceived with message type %d\n", messageType);
     switch (messageType)
     {
     case SET_TIME:
@@ -111,26 +104,45 @@ void WaterManager::onMessageReceived(MessageType messageType, void* message)
     }
 }
 
+void WaterManager::onEventStateChange(const Event& event, bool newState)
+{
+    log_d("Setting event %d to state %s", event.id, (newState ? "ON" : "OFF"));
+
+    auto& stations = m_storage->getStations();
+    for (auto& station_id : event.stations_ids)
+    {
+        auto it = stations.find(station_id);
+        if (it == stations.end())
+        {
+            log_w("Trying to set state for station id %d, station not found", station_id);
+            continue;
+        }
+        auto newStateValue = newState ? HIGH : LOW;
+        log_d("Writing to station %d (pin %d) value %d", station_id, it->second.gpio_pin, newStateValue);
+        digitalWrite(it->second.gpio_pin, newStateValue);
+    }
+}
+
 void WaterManager::setTimeMessage(const SetTimeMessage& timeMessage) const
 {
     struct timeval now;
-    ESP_LOGD(TAG, "In %s", __FUNCTION__);
+    log_d("In");
     gettimeofday(&now, NULL);
     auto time = localtime(&now.tv_sec);
-    ESP_LOGI(TAG, "current time is set to %02d:%02d:%02d.%03ld", time->tm_hour,
+    log_i("current time is set to %02d:%02d:%02d.%03ld", time->tm_hour,
 		   time->tm_min, time->tm_sec, now.tv_usec / 1000);
 
     struct timeval newTime;
     newTime.tv_sec = timeMessage.timeval.tv_sec;
     newTime.tv_usec = timeMessage.timeval.tv_usec;
     settimeofday(&newTime, nullptr);
-    ESP_LOGI(TAG, "Setting TZ to %s", timeMessage.tz.c_str());
+    log_i("Setting TZ to %s", timeMessage.tz.c_str());
     setenv("TZ", timeMessage.tz.c_str(), 1);
     tzset();
 
     gettimeofday(&now, NULL);
     time = localtime(&now.tv_sec);
-    ESP_LOGI(TAG, "new time is set to %02d:%02d:%02d.%03ld", time->tm_hour,
+    log_i("new time is set to %02d:%02d:%02d.%03ld", time->tm_hour,
 		   time->tm_min, time->tm_sec, now.tv_usec / 1000);
 
     m_rtc->fillByHMS(time->tm_hour, time->tm_min, time->tm_sec);
@@ -141,26 +153,4 @@ void WaterManager::setTimeMessage(const SetTimeMessage& timeMessage) const
     m_rtc->fillDayOfWeek(time->tm_wday+1);
     m_rtc->setTime();
     printTimeFromRTC();
-}
-
-void WaterManager::checkEvents()
-{
-    for (auto& eventsPair : m_storage->getEvents())
-    {
-        auto& event = eventsPair.second;
-        if (event.start_time >= 0)
-        {
-            struct timeval now;                    
-            gettimeofday(&now, NULL);
-
-            time_t start_time = event.start_time;
-            auto time = localtime(&start_time);
-            printf("check events start time %02d:%02d:%02d\n", time->tm_hour,
-                time->tm_min, time->tm_sec);
-            if (now.tv_sec > start_time)
-            {
-                printf("Start time elapsed\n");
-            }
-        }
-    }
 }

@@ -10,6 +10,7 @@
 #include "DS1307.h"
 #include "esp_log.h"
 
+WaterManager* manager = nullptr;
 
 void setup() 
 {
@@ -21,10 +22,12 @@ void setup()
 
 
     printf("Starting Water Manager\n");
-    auto manager = new WaterManager();
-    manager->run();
+    manager = new WaterManager();
     printf("Water Manager is now running..\n");
     fflush(stdout);
 }
 
-void loop() {}
+void loop() 
+{
+    manager->loop();
+}

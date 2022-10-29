@@ -1,8 +1,9 @@
 
 #include "Bluetooth.h"
+#include "BlablaCallbacks.h"
 #include "data.h"
 
-#include "esp_log.h"
+#include "esp32-hal-log.h"
 #include "cJSON.h"
 
 #define SERVICE_UUID "ABCD"
@@ -14,7 +15,6 @@
 #define SET_EVENT_CHR_UUID                      "1004"
 #define SET_TIME_CHR_UUID                       "1005"
 
-static const char* TAG = "Bluetooth";
 
 static std::map<std::string, MessageType> chrToMessage = {
     { std::string("0x") + std::string(SET_TIME_CHR_UUID), MessageType::SET_TIME}
@@ -47,11 +47,10 @@ static cJSON* eventToJson(const Event& event)
 {
     cJSON* object = cJSON_CreateObject();
     cJSON_AddNumberToObject(object, "id", event.id);
-    cJSON_AddNumberToObject(object, "station_id", event.station_id);
+    // cJSON_AddNumberToObject(object, "station_id", event.station_id);
     cJSON_AddStringToObject(object, "name", event.name.c_str());
-    cJSON_AddNumberToObject(object, "start_time", event.start_time);
-    cJSON_AddNumberToObject(object, "end_time", event.end_time);
-    cJSON_AddBoolToObject(object, "is_on", event.is_on);
+    cJSON_AddStringToObject(object, "cron_expr", event.cron_expr.c_str());
+    cJSON_AddNumberToObject(object, "duration", event.duration);
 
     return object;
 }
@@ -96,7 +95,7 @@ void Bluetooth::setStations(const std::map<uint32_t, Station>& stations)
         std::vector<Station> stationVec = to_vector(stations);
         auto json_cstr = cJSON_PrintUnformatted(stationsToJson(stationVec));
         std::string stationsJsonStr(json_cstr);
-        ESP_LOGI(TAG, "Stations JSON:\n%s\n", stationsJsonStr.c_str());
+        log_i("Stations JSON:\n%s", stationsJsonStr.c_str());
         getStationsChr->setValue(stationsJsonStr);
         cJSON_free(json_cstr);
     }
@@ -108,11 +107,14 @@ void Bluetooth::setEvents(const std::map<uint32_t, Event>& events)
     if (getStationsChr != nullptr)
     {   
         std::vector<Event> eventsVec = to_vector(events);
-        auto json_cstr = cJSON_PrintUnformatted(eventsToJson(eventsVec));
-        std::string eventsJsonStr(json_cstr);
-        ESP_LOGI(TAG, "Events JSON:\n%s\n", eventsJsonStr.c_str());
-        getStationsChr->setValue(eventsJsonStr);
-        cJSON_free(json_cstr);
+        std::vector<EventData> data;
+        // eventsToData(eventsVec, data);
+        // auto json_cstr = cJSON_PrintUnformatted(eventsToJson(eventsVec));
+        // std::string eventsJsonStr(json_cstr);
+        // log_i("Events JSON:%s", eventsJsonStr.c_str());
+        const char* bytes = (const char*)&data[0];
+        // getStationsChr->setValue(bytes, );
+        // cJSON_free(json_cstr);
     }
 }
 
@@ -123,7 +125,7 @@ void Bluetooth::notifyStationStateChanged(const Station& station) const
     {
         auto json_cstr = cJSON_PrintUnformatted(stationToJson(station));
         std::string stationJsonStr(json_cstr);
-        ESP_LOGI(TAG, "Notifying Station JSON:\n%s\n", stationJsonStr.c_str());
+        log_i("Notifying Station JSON:%s", stationJsonStr.c_str());
         stationChangedChr->notify(stationJsonStr);
         cJSON_free(json_cstr);
     }
@@ -135,14 +137,14 @@ NimBLECharacteristic* Bluetooth::getCharacteristicByUUIDs(const char* serviceUui
     if (pService == nullptr)
     {
         std::string errorMsg = "No service with UUID " + std::string(serviceUuid);
-        ESP_LOGI(TAG, "%s\n", errorMsg.c_str());
+        log_i("%s", errorMsg.c_str());
         return nullptr;
     }
     auto pCharacteristic = pService->getCharacteristic(characteristicUuid);
     if (pCharacteristic == nullptr)
     {
         std::string errorMsg = "No characteristic with UUID " + std::string(characteristicUuid);
-        ESP_LOGI(TAG, "%s\n", errorMsg.c_str());
+        log_i("%s", errorMsg.c_str());
         return nullptr;
     }
 
@@ -180,8 +182,8 @@ void Bluetooth::start()
 }
 
 void Bluetooth::onRead(NimBLECharacteristic* pCharacteristic){
-    ESP_LOGI(TAG, "%s", pCharacteristic->getUUID().toString().c_str());
-    ESP_LOGI(TAG, ": onRead(), value: \n%s\n",pCharacteristic->getValue().c_str());
+    log_i("%s", pCharacteristic->getUUID().toString().c_str());
+    log_i(": onRead(), value: %s",pCharacteristic->getValue().c_str());
 
     if (m_pCallback)
     {
@@ -192,23 +194,23 @@ void Bluetooth::onRead(NimBLECharacteristic* pCharacteristic){
 
 void Bluetooth::onWrite(NimBLECharacteristic* pCharacteristic) {
     std::string characteristicStr = pCharacteristic->getUUID().toString();
-    ESP_LOGI(TAG, "%s", characteristicStr.c_str());
-    ESP_LOGI(TAG, ": onWrite(), value: \n%s\n", pCharacteristic->getValue().c_str());
+    log_i("%s", characteristicStr.c_str());
+    log_i(": onWrite(), value: %s", pCharacteristic->getValue().c_str());
 
     if (chrToMessage.find(characteristicStr) == chrToMessage.end())
     {
-        ESP_LOGI(TAG, "Unknown characteristic %s", characteristicStr.c_str());
+        log_i("Unknown characteristic %s", characteristicStr.c_str());
         return;
     }
     MessageType messageType = chrToMessage.at(characteristicStr);
-    ESP_LOGI(TAG, "characteristic %s, message is %d", characteristicStr.c_str(), messageType);
+    log_i("characteristic %s, message is %d", characteristicStr.c_str(), messageType);
 
     parseCharacteristicWrite(pCharacteristic, messageType);
 };
 
 void Bluetooth::onNotify(NimBLECharacteristic* pCharacteristic) {
-    ESP_LOGI(TAG, "%s", pCharacteristic->getUUID().toString().c_str());
-    ESP_LOGI(TAG, ": onNotify(), value: \n%s\n", pCharacteristic->getValue().c_str());
+    log_i("%s", pCharacteristic->getUUID().toString().c_str());
+    log_i(": onNotify(), value: %s", pCharacteristic->getValue().c_str());
 }
 
 void Bluetooth::parseCharacteristicWrite(NimBLECharacteristic* pCharacteristic, MessageType messageType) const
@@ -235,7 +237,7 @@ void Bluetooth::parseSetTime(NimBLECharacteristic* pCharacteristic) const
             const char *error_ptr = cJSON_GetErrorPtr();
             if (error_ptr != NULL)
             {
-                ESP_LOGE(TAG, "Error before: %s\n", error_ptr);
+                log_e("Error before: %s", error_ptr);
             }
         }
         SetTimeMessage message;        

@@ -40,7 +40,7 @@ Storage::Storage()
         addStation(s2);
     }
 
-    log_i("Calling loadEvents()\n");
+    log_i("Calling loadEvents()");
     loadEvents();
     if (m_events.empty())
     {
@@ -148,7 +148,7 @@ bool Storage::addStation(const Station& station)
 {
     if (m_stations.find(station.id) != m_stations.end())
     {
-        log_i("Station already exists. Not overriding\n");
+        log_i("Station already exists. Not overriding");
         return false;
     }
     log_i("Adding station %d", station.id);
@@ -161,7 +161,7 @@ bool Storage::removeStation(uint32_t id)
 {
     if (m_stations.find(id) == m_stations.end())
     {
-        log_i("Station not found\n");
+        log_i("Station not found");
         return false;
     }
     m_stations.erase(id);
@@ -217,7 +217,7 @@ bool Storage::getStation(uint32_t id, Station& station) const
 {
     if (m_stations.find(id) == m_stations.end())
     {
-        log_i("Station not found\n");
+        log_i("Station not found");
         return false;
     }
     station = m_stations.at(id);
@@ -228,7 +228,7 @@ bool Storage::addEvent(const Event& event)
 {
     if (m_events.find(event.id) != m_events.end())
     {
-        log_i("Event already exists. Not overriding\n");
+        log_i("Event already exists. Not overriding");
         return false;
     }
     m_events.insert({event.id, event});
@@ -241,7 +241,7 @@ bool Storage::removeEvent(uint32_t id)
 {
     if (m_events.find(id) == m_events.end())
     {
-        log_i("Event not found\n");
+        log_i("Event not found");
         return false;
     }
     m_events.erase(id);
@@ -302,7 +302,7 @@ bool Storage::getEvent(uint32_t id, Event& event) const
 {
     if (m_events.find(id) == m_events.end())
     {
-        log_i("Event not found\n");
+        log_i("Event not found");
         return false;
     }
     event = m_events.at(id);

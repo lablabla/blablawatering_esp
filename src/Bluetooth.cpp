@@ -6,6 +6,8 @@
 #include "esp32-hal-log.h"
 #include "cJSON.h"
 
+#define MSG_END_CHAR '\n'
+
 #define SERVICE_UUID "ABCD"
 
 #define SET_STATION_CHR_UUID                    "1000"
@@ -16,9 +18,11 @@
 #define SET_TIME_CHR_UUID                       "1005"
 
 
+
 static std::map<std::string, MessageType> chrToMessage = {
     { std::string("0x") + std::string(SET_TIME_CHR_UUID), MessageType::SET_TIME}
 };
+static std::map<MessageType, std::vector<char>> characteristicsBuffers;
 
 // JSON Helpers
 static cJSON* stationToJson(const Station& station)
@@ -66,15 +70,37 @@ static cJSON* eventsToJson(const std::vector<Event>& events)
     return root;
 }
 
+uint16_t eventsToData(const std::vector<Event>& events, char* data)
+{
+    std::vector<EventData> ed_vec;
+    uint16_t size = 0;
+    for(const auto& e : events)
+    {
+        EventData ed(e);
+        ed_vec.emplace_back(ed);
+        size += ed.length();
+    }
+    data = new char[size];
+    uint16_t offset = 0;
+    for (const auto& ed : ed_vec)
+    {
+        memcpy(&data[offset], &ed, sizeof(EventData)); // This would copy less data than needed because the last two elements are pointers. next we fill their space
+        memcpy(&data[offset + sizeof(EventData)], ed.stations, ed.num_stations * sizeof(uint8_t));
+        offset += ed.length();
+    }
+}
+
 Bluetooth::Bluetooth(const std::string& name) :
-    m_pCallback(nullptr)
+    m_pCallback(nullptr),
+    m_characteristicValues()
 {
     
     NimBLEDevice::init(name);
     NimBLEDevice::setPower(ESP_PWR_LVL_P9); /** +9db */
-    NimBLEDevice::setMTU(200);
+    NimBLEDevice::setMTU(BLE_ATT_MTU_MAX);
 
     NimBLEDevice::setSecurityAuth(BLE_SM_PAIR_AUTHREQ_BOND);
+    // TODO: Replace hardcoded with random and show on LCD display
     NimBLEDevice::setSecurityPasskey(123456);
     NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_YESNO);
     m_pServer = NimBLEDevice::createServer();
@@ -96,7 +122,14 @@ void Bluetooth::setStations(const std::map<uint32_t, Station>& stations)
         auto json_cstr = cJSON_PrintUnformatted(stationsToJson(stationVec));
         std::string stationsJsonStr(json_cstr);
         log_i("Stations JSON:\n%s", stationsJsonStr.c_str());
-        getStationsChr->setValue(stationsJsonStr);
+
+        if (stationsJsonStr[stationsJsonStr.size()-1] != '\n')
+        {
+            log_i("Adding newline char to value");
+            stationsJsonStr += "\n";
+        }
+        m_characteristicValues[getStationsChr] = std::make_pair(stationsJsonStr, 0);
+
         cJSON_free(json_cstr);
     }
 }
@@ -151,6 +184,26 @@ NimBLECharacteristic* Bluetooth::getCharacteristicByUUIDs(const char* serviceUui
     return pCharacteristic;
 }
 
+void Bluetooth::setCharacteristicValue(NimBLECharacteristic* pCharacteristic, const std::string& value)
+{
+    log_i("Setting value of %s to %s", pCharacteristic->toString().c_str(), value.c_str());
+    auto max_size = std::min((std::size_t)NimBLEDevice::getMTU(), value.length());
+    log_i("Max size is %d, value length is %d", max_size, value.length());
+
+    std::string substr = value.substr(0, max_size);
+    int& bytes_sent = m_characteristicValues[pCharacteristic].second;
+    bytes_sent += substr.length();
+    log_i("Setting value to substring %s", substr.c_str());
+    pCharacteristic->setValue(substr);
+
+    const std::string& full_value = m_characteristicValues[pCharacteristic].first;
+    if (bytes_sent == full_value.length())
+    {
+        log_i("Full value sent. Resetting to 0");
+        bytes_sent = 0;
+    }
+}
+
 void Bluetooth::setupCharacteristic()
 {        
     NimBLEService *pService = m_pServer->createService(SERVICE_UUID);
@@ -164,6 +217,10 @@ void Bluetooth::setupCharacteristic()
 
     NimBLECharacteristic *setTimeChr = pService->createCharacteristic(SET_TIME_CHR_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC | NIMBLE_PROPERTY::WRITE_AUTHEN);
     
+    for (const auto& characteristics : chrToMessage)
+    {
+        characteristicsBuffers[characteristics.second] = std::vector<char>();
+    }
 
     getStationsChr->setCallbacks(this);
     setStationChr->setCallbacks(this);
@@ -177,25 +234,29 @@ void Bluetooth::setupCharacteristic()
 void Bluetooth::start()
 {
     NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
-    pAdvertising->addServiceUUID("ABCD");
+    pAdvertising->addServiceUUID(SERVICE_UUID);
     pAdvertising->start();
 }
 
-void Bluetooth::onRead(NimBLECharacteristic* pCharacteristic){
-    log_i("%s", pCharacteristic->getUUID().toString().c_str());
-    log_i(": onRead(), value: %s",pCharacteristic->getValue().c_str());
-
-    if (m_pCallback)
+void Bluetooth::onRead(NimBLECharacteristic* pCharacteristic) {
+    auto value = pCharacteristic->getValue();
+    auto total_length = m_characteristicValues[pCharacteristic].first.length();
+    auto last_read_pos = m_characteristicValues[pCharacteristic].second;
+    log_i("Total length: %d, last read pos: %d", total_length, last_read_pos);
+    int remaining_length = total_length - last_read_pos;
+    if (remaining_length > 0)
     {
-        auto value = pCharacteristic->getValue();
-        //m_pCallback->onMessageReceived(&value);
+        std::string new_value = m_characteristicValues[pCharacteristic].first.substr(last_read_pos);
+        setCharacteristicValue(pCharacteristic, new_value);
     }
-};
+    log_i("Sending value %s", pCharacteristic->getValue().c_str());
+}
 
 void Bluetooth::onWrite(NimBLECharacteristic* pCharacteristic) {
     std::string characteristicStr = pCharacteristic->getUUID().toString();
-    log_i("%s", characteristicStr.c_str());
-    log_i(": onWrite(), value: %s", pCharacteristic->getValue().c_str());
+    std::string value_str(pCharacteristic->getValue().c_str());
+    log_i("%s: value: %s (%s)", characteristicStr.c_str(), pCharacteristic->getValue().c_str(), value_str.c_str());
+
 
     if (chrToMessage.find(characteristicStr) == chrToMessage.end())
     {
@@ -203,22 +264,37 @@ void Bluetooth::onWrite(NimBLECharacteristic* pCharacteristic) {
         return;
     }
     MessageType messageType = chrToMessage.at(characteristicStr);
-    log_i("characteristic %s, message is %d", characteristicStr.c_str(), messageType);
+    auto& buffer = characteristicsBuffers[messageType];
+    if (value_str.at(0) == '$')
+    {
+        value_str = value_str.substr(1);
+        log_i("Found start of message. Resetting buffer. Using incoming message %s", value_str.c_str());
+        buffer = std::vector<char>();
+    }
 
-    parseCharacteristicWrite(pCharacteristic, messageType);
-};
+    log_i("Buffer length is %d", buffer.size());
+    buffer.insert(buffer.end(), value_str.begin(), value_str.end());
+    std::string buffer_string(buffer.begin(), buffer.end());
+    log_i("Added %d chars to buffer. New buffer length is %d (%s)", value_str.length(), buffer.size(), buffer_string.c_str());
+    if (buffer[buffer.size()-1] == MSG_END_CHAR)
+    {
+        log_i("characteristic %s, message is %d", characteristicStr.c_str(), messageType);
+
+        parseCharacteristicWrite(buffer, messageType);
+    }
+}
 
 void Bluetooth::onNotify(NimBLECharacteristic* pCharacteristic) {
     log_i("%s", pCharacteristic->getUUID().toString().c_str());
     log_i(": onNotify(), value: %s", pCharacteristic->getValue().c_str());
 }
 
-void Bluetooth::parseCharacteristicWrite(NimBLECharacteristic* pCharacteristic, MessageType messageType) const
+void Bluetooth::parseCharacteristicWrite(const std::vector<char>& buffer, MessageType messageType) const
 {
     switch(messageType)
     {
         case SET_TIME:
-            parseSetTime(pCharacteristic);
+            parseSetTime(buffer);
         break;
 
         default:
@@ -226,12 +302,11 @@ void Bluetooth::parseCharacteristicWrite(NimBLECharacteristic* pCharacteristic, 
     }
 }
 
-void Bluetooth::parseSetTime(NimBLECharacteristic* pCharacteristic) const
+void Bluetooth::parseSetTime(const std::vector<char>& buffer) const
 {    
     if (m_pCallback)
     {
-        auto value = pCharacteristic->getValue();
-        cJSON *json = cJSON_Parse(value.c_str());
+        cJSON *json = cJSON_Parse(&buffer[0]);
         if (json == NULL)
         {
             const char *error_ptr = cJSON_GetErrorPtr();

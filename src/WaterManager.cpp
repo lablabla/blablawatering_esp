@@ -1,6 +1,7 @@
 
 #include "WaterManager.h"
 
+#include <LiquidCrystal_I2C.h>
 #include "Storage.h"
 #include "Bluetooth.h"
 #include "DS1307.h"
@@ -15,6 +16,13 @@
 WaterManager::WaterManager() :
     m_backgroundTaskHandle(nullptr)
 {
+    m_lcd = new LiquidCrystal_I2C(0x27, 20, 4);
+    m_lcd->init();
+    m_lcd->backlight();
+    m_lcd->noBlink();
+    m_lcd->setCursor(3, 1);
+    m_lcd->print("Initializing...");
+
     log_i("Initializing storage\n");
     m_storage = new Storage();    
     for (const auto& station : m_storage->getStations())
@@ -41,11 +49,12 @@ WaterManager::WaterManager() :
     m_rtc->begin();
     updateTimeFromRTC();
 
-    log_i("Initialing cron manager\n");
+    log_i("Initializing cron manager\n");
     m_cronManager = new CronManager();
     m_cronManager->setCronCallbacks(this);
-    m_cronManager->begin(m_storage->getEvents());
+    // m_cronManager->begin(m_storage->getEvents());
     log_i("Water Manager initialized\n");
+
 
 }
 

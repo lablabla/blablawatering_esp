@@ -84,13 +84,9 @@ void CronManager::removeEvent(const Event& event)
     }
 }
 
-void CronManager::begin(const std::map<uint32_t, Event>& events)
+void CronManager::begin()
 {
-    log_i("Starting cron manager with %d events\n", events.size());
-    for (const auto& e : events)
-    {
-        addEvent(e.second);
-    }
+    log_i("Starting cron manager");
 }
 
 taskid_t CronManager::getTaskId(uint32_t eventId) const

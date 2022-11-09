@@ -51,7 +51,13 @@ static cJSON* eventToJson(const Event& event)
 {
     cJSON* object = cJSON_CreateObject();
     cJSON_AddNumberToObject(object, "id", event.id);
-    // cJSON_AddNumberToObject(object, "station_id", event.station_id);
+    
+	cJSON* stations_array = cJSON_AddArrayToObject(object, "station_ids");
+    for (auto id : event.stations_ids)
+    {
+        cJSON* number = cJSON_CreateNumber(id);
+        cJSON_AddItemToArray(stations_array, number);        
+    }    
     cJSON_AddStringToObject(object, "name", event.name.c_str());
     cJSON_AddStringToObject(object, "cron_expr", event.cron_expr.c_str());
     cJSON_AddNumberToObject(object, "duration", event.duration);
@@ -68,26 +74,6 @@ static cJSON* eventsToJson(const std::vector<Event>& events)
         cJSON_AddItemToArray(root, object);
     }
     return root;
-}
-
-uint16_t eventsToData(const std::vector<Event>& events, char* data)
-{
-    std::vector<EventData> ed_vec;
-    uint16_t size = 0;
-    for(const auto& e : events)
-    {
-        EventData ed(e);
-        ed_vec.emplace_back(ed);
-        size += ed.length();
-    }
-    data = new char[size];
-    uint16_t offset = 0;
-    for (const auto& ed : ed_vec)
-    {
-        memcpy(&data[offset], &ed, sizeof(EventData)); // This would copy less data than needed because the last two elements are pointers. next we fill their space
-        memcpy(&data[offset + sizeof(EventData)], ed.stations, ed.num_stations * sizeof(uint8_t));
-        offset += ed.length();
-    }
 }
 
 Bluetooth::Bluetooth(const std::string& name) :
@@ -119,7 +105,8 @@ void Bluetooth::setStations(const std::map<uint32_t, Station>& stations)
     if (getStationsChr != nullptr)
     {   
         std::vector<Station> stationVec = to_vector(stations);
-        auto json_cstr = cJSON_PrintUnformatted(stationsToJson(stationVec));
+        auto json = stationsToJson(stationVec);
+        auto json_cstr = cJSON_PrintUnformatted(json);
         std::string stationsJsonStr(json_cstr);
         log_i("Stations JSON:\n%s", stationsJsonStr.c_str());
 
@@ -129,25 +116,30 @@ void Bluetooth::setStations(const std::map<uint32_t, Station>& stations)
             stationsJsonStr += "\n";
         }
         m_characteristicValues[getStationsChr] = std::make_pair(stationsJsonStr, 0);
-
+        cJSON_Delete(json);
         cJSON_free(json_cstr);
     }
 }
 
 void Bluetooth::setEvents(const std::map<uint32_t, Event>& events)
 {
-    auto getStationsChr = getCharacteristicByUUIDs(SERVICE_UUID, GET_EVENTS_CHR_UUID);
-    if (getStationsChr != nullptr)
+    auto getEventsChr = getCharacteristicByUUIDs(SERVICE_UUID, GET_EVENTS_CHR_UUID);
+    if (getEventsChr != nullptr)
     {   
         std::vector<Event> eventsVec = to_vector(events);
-        std::vector<EventData> data;
-        // eventsToData(eventsVec, data);
-        // auto json_cstr = cJSON_PrintUnformatted(eventsToJson(eventsVec));
-        // std::string eventsJsonStr(json_cstr);
-        // log_i("Events JSON:%s", eventsJsonStr.c_str());
-        const char* bytes = (const char*)&data[0];
-        // getStationsChr->setValue(bytes, );
-        // cJSON_free(json_cstr);
+        auto json = eventsToJson(eventsVec);
+        auto json_cstr = cJSON_PrintUnformatted(json);
+        std::string eventsJsonStr(json_cstr);
+        log_i("Events JSON:%s", eventsJsonStr.c_str());
+        
+        if (eventsJsonStr[eventsJsonStr.size()-1] != '\n')
+        {
+            log_i("Adding newline char to value");
+            eventsJsonStr += "\n";
+        }
+        m_characteristicValues[getEventsChr] = std::make_pair(eventsJsonStr, 0);
+        cJSON_Delete(json);
+        cJSON_free(json_cstr);
     }
 }
 

@@ -52,9 +52,13 @@ WaterManager::WaterManager() :
     log_i("Initializing cron manager\n");
     m_cronManager = new CronManager();
     m_cronManager->setCronCallbacks(this);
-    // m_cronManager->begin(m_storage->getEvents());
-    log_i("Water Manager initialized\n");
+    m_cronManager->begin();    
+    for (const auto& e : m_storage->getEvents())
+    {
+        m_cronManager->addEvent(e.second);
+    }
 
+    log_i("Water Manager initialized\n");
 
 }
 
@@ -115,7 +119,7 @@ void WaterManager::onMessageReceived(MessageType messageType, void* message)
 
 void WaterManager::onEventStateChange(const Event& event, bool newState)
 {
-    log_d("Setting event %d to state %s", event.id, (newState ? "ON" : "OFF"));
+    //log_d("Setting event %d to state %s", event.id, (newState ? "ON" : "OFF"));
 
     auto& stations = m_storage->getStations();
     for (auto& station_id : event.stations_ids)
@@ -127,7 +131,7 @@ void WaterManager::onEventStateChange(const Event& event, bool newState)
             continue;
         }
         auto newStateValue = newState ? HIGH : LOW;
-        log_d("Writing to station %d (pin %d) value %d", station_id, it->second.gpio_pin, newStateValue);
+        //log_d("Writing to station %d (pin %d) value %d", station_id, it->second.gpio_pin, newStateValue);
         digitalWrite(it->second.gpio_pin, newStateValue);
     }
 }

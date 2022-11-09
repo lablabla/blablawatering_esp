@@ -14,16 +14,9 @@ WaterManager* manager = nullptr;
 
 void setup() 
 {
-    struct timeval now;
-    gettimeofday(&now, NULL);
-    auto time = localtime(&now.tv_sec);
-    printf("Initial time is set to %02d:%02d:%02d.%03ld\n", time->tm_hour,
-		   time->tm_min, time->tm_sec, now.tv_usec / 1000);
-
-
-    printf("Starting Water Manager\n");
+    log_i("Starting Water Manager");
     manager = new WaterManager();
-    printf("Water Manager is now running..\n");
+    log_i("Water Manager is now running..");
     fflush(stdout);
 }
 

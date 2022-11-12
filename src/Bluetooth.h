@@ -8,20 +8,26 @@
 #include "data.h"
 
 class BlablaCallbacks;
+class Storage;
 
-class Bluetooth : public NimBLECharacteristicCallbacks
+class Bluetooth : public NimBLECharacteristicCallbacks, public NimBLEServerCallbacks
 {
 public:
-    Bluetooth(const std::string& name);
+    Bluetooth(const std::string& name, Storage* storage);
 
     void start();
     void setBluetoothCallbacks(BlablaCallbacks* callbacks);
-    void setStations(const std::map<uint32_t, Station>& stations);
-    void setEvents(const std::map<uint32_t, Event>& events);
-    void notifyStationStateChanged(const Station& station) const;
+    void setStations();
+    void setEvents();
+    void notifyStationStates() const;
 
 private:
 
+    // Server callbacks
+    void onConnect(NimBLEServer* pServer) override;
+    void onDisconnect(NimBLEServer* pServer) override;
+
+    // Characteristics callbacks
     void onRead(NimBLECharacteristic* pCharacteristic) override;
     void onWrite(NimBLECharacteristic* pCharacteristic) override;
     void onNotify(NimBLECharacteristic* pCharacteristic) override;
@@ -34,8 +40,11 @@ private:
 
     void parseCharacteristicWrite(const std::vector<char>& buffer, MessageType messageType) const;
     void parseSetTime(const std::vector<char>& buffer) const;
+    void parseSetStationState(const std::vector<char>& buffer) const;
 
     NimBLEServer* m_pServer;
+    Storage* m_pStorage;
+
     BlablaCallbacks* m_pCallback;
     std::map<NimBLECharacteristic*, std::pair<std::string, int>> m_characteristicValues;
 };

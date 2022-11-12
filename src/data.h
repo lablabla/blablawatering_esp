@@ -13,6 +13,9 @@
 enum MessageType
 {
     SET_TIME,
+    GET_STATIONS,
+    SET_STATION_STATE,
+    REQUEST_NOTIFY,
     MAX,
 };
 
@@ -20,6 +23,12 @@ struct SetTimeMessage
 {
     struct timeval timeval;
     std::string tz;
+};
+
+struct SetStationStateMessage
+{
+    int station_id;
+    bool is_on;
 };
 
 struct Station

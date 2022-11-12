@@ -26,10 +26,13 @@
         void onEventStateChange(const Event& event, bool newState) override;
     private:
 
+        void setStationState(Station& station, bool newState);
+
         void updateTimeFromRTC();
         void printTimeFromRTC() const;
 
         void setTimeMessage(const SetTimeMessage& timeMessage) const;
+        void setStationStateMessage(const SetStationStateMessage& stationStateMessage);
 
         std::mutex m_mutex;
         void* m_backgroundTaskHandle;

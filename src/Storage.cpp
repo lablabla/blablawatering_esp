@@ -44,8 +44,10 @@ Storage::Storage()
     loadEvents();
     if (m_events.empty())
     {
-        Event e2(1, {0}, "every 10 seconds", "*/10 * * * * *", 30);
-        addEvent(e2);
+        Event e1(0, {0}, "every 10 seconds", "*/10 * * * * *", 15);
+        Event e2(1, {0, 1}, "every 15 seconds", "*/15 * * * * *", 15);
+        // addEvent(e1);
+        // addEvent(e2);
     }
 }
 
@@ -213,15 +215,14 @@ bool Storage::setStations(const std::map<uint32_t, Station>& stations)
     return true;
 }
 
-bool Storage::getStation(uint32_t id, Station& station) const
+Station* Storage::getStation(uint32_t id)
 {
     if (m_stations.find(id) == m_stations.end())
     {
-        log_i("Station not found");
-        return false;
+        log_w("Station not found");
+        return nullptr;
     }
-    station = m_stations.at(id);
-    return true;
+    return &m_stations.at(id);
 }
 
 bool Storage::addEvent(const Event& event)
@@ -298,14 +299,13 @@ bool Storage::setEvents(const std::map<uint32_t, Event>& events)
     return true;
 }
 
-bool Storage::getEvent(uint32_t id, Event& event) const
+Event* Storage::getEvent(uint32_t id)
 {
     if (m_events.find(id) == m_events.end())
     {
         log_i("Event not found");
-        return false;
+        return nullptr;
     }
-    event = m_events.at(id);
-    return true;
+    return &m_events.at(id);
 }
 

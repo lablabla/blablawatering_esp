@@ -35,14 +35,14 @@ WaterManager::WaterManager() :
     }
 
     log_i("Initializing bluetooth\n");
-    m_bluetooth = new Bluetooth("Blabla Watering System");
+    m_bluetooth = new Bluetooth("Blabla Watering System", m_storage);
     m_bluetooth->setBluetoothCallbacks(this);
     m_bluetooth->start();
 
     
     log_i("Updating stations and events\n");
-    m_bluetooth->setStations(m_storage->getStations());
-    m_bluetooth->setEvents(m_storage->getEvents());
+    m_bluetooth->setStations();
+    m_bluetooth->setEvents();
 
     log_i("Initializing RTC\n");
     m_rtc = new DS1307();
@@ -59,7 +59,8 @@ WaterManager::WaterManager() :
     }
 
     log_i("Water Manager initialized\n");
-
+    delay(1000);
+    m_lcd->clear();
 }
 
 WaterManager::~WaterManager()
@@ -74,6 +75,14 @@ WaterManager::~WaterManager()
 void WaterManager::loop()
 {
     m_cronManager->loop();
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    auto time = localtime(&now.tv_sec);
+    
+    // m_lcd->clear();
+    m_lcd->setCursor(3, 1);
+    m_lcd->printf("%02d:%02d:%02d", time->tm_hour,
+		   time->tm_min, time->tm_sec);
 }
 
 void WaterManager::updateTimeFromRTC()
@@ -111,7 +120,9 @@ void WaterManager::onMessageReceived(MessageType messageType, void* message)
     case SET_TIME:
         setTimeMessage(*reinterpret_cast<SetTimeMessage*>(message));
         break;
-    
+    case SET_STATION_STATE:
+        setStationStateMessage(*reinterpret_cast<SetStationStateMessage*>(message));
+        break;
     default:
         break;
     }
@@ -119,21 +130,26 @@ void WaterManager::onMessageReceived(MessageType messageType, void* message)
 
 void WaterManager::onEventStateChange(const Event& event, bool newState)
 {
-    //log_d("Setting event %d to state %s", event.id, (newState ? "ON" : "OFF"));
-
-    auto& stations = m_storage->getStations();
     for (auto& station_id : event.stations_ids)
     {
-        auto it = stations.find(station_id);
-        if (it == stations.end())
+        Station* station = m_storage->getStation(station_id);
+        if (station == nullptr)
         {
-            log_w("Trying to set state for station id %d, station not found", station_id);
+            log_w("Couldn't find station with ID %d, skipping", station_id);
             continue;
         }
-        auto newStateValue = newState ? HIGH : LOW;
-        //log_d("Writing to station %d (pin %d) value %d", station_id, it->second.gpio_pin, newStateValue);
-        digitalWrite(it->second.gpio_pin, newStateValue);
+        setStationState(*station, newState);
     }
+    
+    m_bluetooth->notifyStationStates();
+}
+
+void WaterManager::setStationState(Station& station, bool newState)
+{
+    auto newStateValue = newState ? HIGH : LOW;
+    log_d("Setting station id %d to new state %s", station.id, (newState ? "ON" : "OFF"));
+    digitalWrite(station.gpio_pin, newStateValue);
+    station.is_on = newState;
 }
 
 void WaterManager::setTimeMessage(const SetTimeMessage& timeMessage) const
@@ -166,4 +182,16 @@ void WaterManager::setTimeMessage(const SetTimeMessage& timeMessage) const
     m_rtc->fillDayOfWeek(time->tm_wday+1);
     m_rtc->setTime();
     printTimeFromRTC();
+}
+
+void WaterManager::setStationStateMessage(const SetStationStateMessage& stationStateMessage)
+{    
+    Station* station = m_storage->getStation(stationStateMessage.station_id);
+    if (station == nullptr)
+    {
+        log_w("Couldn't find station with ID %d, skipping", stationStateMessage.station_id);
+        return;
+    }
+    setStationState(*station, stationStateMessage.is_on);
+    m_bluetooth->notifyStationStates();
 }

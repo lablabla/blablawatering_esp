@@ -25,7 +25,7 @@ public:
     bool setStations(const std::map<uint32_t, Station>& stations);
     
     const std::map<uint32_t, Station>& getStations() const { return m_stations; }
-    bool getStation(uint32_t id, Station& station) const;
+    Station* getStation(uint32_t id);
 
 
     bool addEvent(const Event& event);
@@ -35,7 +35,7 @@ public:
     bool setEvents(const std::map<uint32_t, Event>& events);
 
     const std::map<uint32_t, Event>& getEvents() const { return m_events; }
-    bool getEvent(uint32_t id, Event& event) const;
+    Event* getEvent(uint32_t id);
 
 private:
     std::map<uint32_t, Station> m_stations;

@@ -14,6 +14,7 @@ enum MessageType
 {
     SET_TIME,
     GET_STATIONS,
+    GET_EVENTS,
     SET_STATION_STATE,
     REQUEST_NOTIFY,
     MAX,

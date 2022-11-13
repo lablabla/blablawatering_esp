@@ -9,6 +9,7 @@
 
 class BlablaCallbacks;
 class Storage;
+class cJSON;
 
 class Bluetooth : public NimBLECharacteristicCallbacks, public NimBLEServerCallbacks
 {
@@ -38,13 +39,14 @@ private:
 
     NimBLECharacteristic* getCharacteristicByUUIDs(const char* serviceUuid, const char* characteristicUuid) const;
 
-    void parseCharacteristicWrite(const std::vector<char>& buffer, MessageType messageType) const;
-    void parseSetTime(const std::vector<char>& buffer) const;
-    void parseSetStationState(const std::vector<char>& buffer) const;
+    void parseCharacteristicWrite(const std::vector<char>& buffer) const;
+    void parseSetTime(const cJSON* json) const;
+    void parseSetStationState(const cJSON* json) const;
 
     NimBLEServer* m_pServer;
     Storage* m_pStorage;
 
     BlablaCallbacks* m_pCallback;
     std::map<NimBLECharacteristic*, std::pair<std::string, int>> m_characteristicValues;
+    std::map<std::string, std::vector<char>> m_characteristicsBuffers;
 };

@@ -46,7 +46,7 @@ Storage::Storage()
     {
         Event e1(0, {0}, "every 10 seconds", "*/10 * * * * *", 15);
         Event e2(1, {0, 1}, "every 15 seconds", "*/15 * * * * *", 15);
-        // addEvent(e1);
+        addEvent(e1);
         // addEvent(e2);
     }
 }

@@ -40,9 +40,6 @@ WaterManager::WaterManager() :
     m_bluetooth->start();
 
     
-    log_i("Updating stations and events\n");
-    m_bluetooth->setStations();
-    m_bluetooth->setEvents();
 
     log_i("Initializing RTC\n");
     m_rtc = new DS1307();

@@ -15,23 +15,17 @@
 
 #define SERVICE_UUID "0000abcd-6e32-4f94-adf6-b96ebda4c6ce"
 
-#define SET_STATION_CHR_UUID                    "1000b0ea-6e32-4f94-adf6-b96ebda4c6ce"
+#define SET_DATA_CHR_UUID                       "1000b0ea-6e32-4f94-adf6-b96ebda4c6ce"
 #define GET_STATIONS_CHR_UUID                   "1001b0ea-6e32-4f94-adf6-b96ebda4c6ce"
 #define GET_EVENTS_CHR_UUID                     "1002b0ea-6e32-4f94-adf6-b96ebda4c6ce"
 #define NOTIFY_STATION_STATUS_CHR_UUID          "1003b0ea-6e32-4f94-adf6-b96ebda4c6ce"
-#define SET_EVENT_CHR_UUID                      "1004b0ea-6e32-4f94-adf6-b96ebda4c6ce"
-#define SET_TIME_CHR_UUID                       "1005b0ea-6e32-4f94-adf6-b96ebda4c6ce"
-#define REQUEST_NOTIFY_STATES                   "1006b0ea-6e32-4f94-adf6-b96ebda4c6ce"
 
-
-
-static std::map<std::string, MessageType> chrToMessage = {
-    { std::string(SET_TIME_CHR_UUID), MessageType::SET_TIME},
-    { std::string(GET_STATIONS_CHR_UUID), MessageType::GET_STATIONS},
-    { std::string(SET_STATION_CHR_UUID), MessageType::SET_STATION_STATE},
-    { std::string(REQUEST_NOTIFY_STATES), MessageType::REQUEST_NOTIFY},
+static std::vector<std::string> s_characteristics = {
+    SET_DATA_CHR_UUID,
+    GET_STATIONS_CHR_UUID,
+    GET_EVENTS_CHR_UUID,
+    NOTIFY_STATION_STATUS_CHR_UUID
 };
-static std::map<MessageType, std::vector<char>> characteristicsBuffers;
 
 // JSON Helpers
 static cJSON* stationToJson(const Station& station)
@@ -108,6 +102,10 @@ Bluetooth::Bluetooth(const std::string& name, Storage* storage) :
     m_pServer = NimBLEDevice::createServer();
     m_pServer->setCallbacks(this);
     setupCharacteristic();
+
+    log_i("Updating stations and events");
+    setStations();
+    setEvents();
 }
 
 void Bluetooth::setBluetoothCallbacks(BlablaCallbacks* callbacks)
@@ -226,29 +224,22 @@ void Bluetooth::setupCharacteristic()
 {        
     NimBLEService *pService = m_pServer->createService(SERVICE_UUID);
     NimBLECharacteristic *getStationsChr = pService->createCharacteristic(GET_STATIONS_CHR_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::READ_AUTHEN);
-    NimBLECharacteristic *setStationChr = pService->createCharacteristic(SET_STATION_CHR_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC | NIMBLE_PROPERTY::WRITE_AUTHEN);
+    NimBLECharacteristic *setDataChr = pService->createCharacteristic(SET_DATA_CHR_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC | NIMBLE_PROPERTY::WRITE_AUTHEN);
 
     NimBLECharacteristic *notifyStationChangedChr = pService->createCharacteristic(NOTIFY_STATION_STATUS_CHR_UUID, NIMBLE_PROPERTY::NOTIFY);
     
     NimBLECharacteristic *getEventsChr = pService->createCharacteristic(GET_EVENTS_CHR_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::READ_AUTHEN);        
-    NimBLECharacteristic *setEventChr = pService->createCharacteristic(SET_EVENT_CHR_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC | NIMBLE_PROPERTY::WRITE_AUTHEN);
 
-    NimBLECharacteristic *setTimeChr = pService->createCharacteristic(SET_TIME_CHR_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC | NIMBLE_PROPERTY::WRITE_AUTHEN);
 
-    NimBLECharacteristic *requestNotifyChr = pService->createCharacteristic(REQUEST_NOTIFY_STATES, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC | NIMBLE_PROPERTY::WRITE_AUTHEN);
-    
-    for (const auto& characteristics : chrToMessage)
+    for (auto& chr : s_characteristics)
     {
-        characteristicsBuffers[characteristics.second] = std::vector<char>();
+        m_characteristicsBuffers[chr] = std::vector<char>();    
     }
 
     getStationsChr->setCallbacks(this);
-    setStationChr->setCallbacks(this);
+    setDataChr->setCallbacks(this);
     notifyStationChangedChr->setCallbacks(this);
-    setEventChr->setCallbacks(this);
     getEventsChr->setCallbacks(this);
-    setTimeChr->setCallbacks(this);
-    requestNotifyChr->setCallbacks(this);
     pService->start();
 }
 
@@ -265,14 +256,14 @@ void Bluetooth::onConnect(NimBLEServer* pServer)
     NimBLEDevice::getAdvertising()->stop();
 
     log_d("Resetting write buffers");
-    for (auto it = characteristicsBuffers.begin(); it != characteristicsBuffers.end(); it++)
+    for (auto& chr : s_characteristics)
     {
-        it->second = std::vector<char>();
+        m_characteristicsBuffers[chr] = std::vector<char>();    
     }
     log_d("Resetting read buffers");
-    for (auto it = m_characteristicValues.begin(); it != m_characteristicValues.end(); it++)
+    for (auto& value : m_characteristicValues)
     {
-        it->second.second = 0;
+        value.second.second = 0;
     }
 }
 
@@ -304,14 +295,7 @@ void Bluetooth::onWrite(NimBLECharacteristic* pCharacteristic) {
     }
     log_i("%s: value: %s (%s)", characteristicStr.c_str(), pCharacteristic->getValue().c_str(), value_str.c_str());
 
-
-    if (chrToMessage.find(characteristicStr) == chrToMessage.end())
-    {
-        log_i("Unknown characteristic %s", characteristicStr.c_str());
-        return;
-    }
-    MessageType messageType = chrToMessage.at(characteristicStr);
-    auto& buffer = characteristicsBuffers[messageType];
+    auto& buffer = m_characteristicsBuffers[characteristicStr];
     if (value_str.at(0) == MSG_START_CHAR)
     {
         value_str = value_str.substr(1);
@@ -325,9 +309,9 @@ void Bluetooth::onWrite(NimBLECharacteristic* pCharacteristic) {
     log_i("Added %d chars to buffer. New buffer length is %d (%s)", value_str.length(), buffer.size(), buffer_string.c_str());
     if (buffer[buffer.size()-1] == MSG_END_CHAR)
     {
-        log_i("characteristic %s, message is %d", characteristicStr.c_str(), messageType);
+        log_i("Found end of message. Parsing");
 
-        parseCharacteristicWrite(buffer, messageType);
+        parseCharacteristicWrite(buffer);
     }
 }
 
@@ -336,15 +320,56 @@ void Bluetooth::onNotify(NimBLECharacteristic* pCharacteristic) {
     log_i(": onNotify(), value: %s", pCharacteristic->getValue().c_str());
 }
 
-void Bluetooth::parseCharacteristicWrite(const std::vector<char>& buffer, MessageType messageType) const
+void Bluetooth::parseCharacteristicWrite(const std::vector<char>& buffer) const
 {
+    cJSON *json = cJSON_Parse(&buffer[0]);
+    if (json == NULL)
+    {
+        const char *error_ptr = cJSON_GetErrorPtr();
+        if (error_ptr != NULL)
+        {
+            log_e("cJSON Error: %s", error_ptr);
+        }
+        else
+        {
+            log_e("cJSON - Unknown parsing error");
+        }
+        return;
+    }
+    auto messageTypeInt = cJSON_GetObjectItemCaseSensitive(json, "type");
+    if (!cJSON_IsNumber(messageTypeInt) || messageTypeInt->valueint >= MessageType::MAX)
+    {
+        log_e("Unknown message type received");
+        return;
+    }
+    if (!cJSON_HasObjectItem(json, "data"))
+    {
+        log_e("Message doesn't have data object");
+        return;
+    }
+    auto dataJsonStr = cJSON_GetObjectItem(json, "data");
+    auto dataJson = cJSON_Parse(dataJsonStr->valuestring);
+    if (dataJson == NULL)
+    {
+        const char *error_ptr = cJSON_GetErrorPtr();
+        if (error_ptr != NULL)
+        {
+            log_e("data cJSON Error: %s", error_ptr);
+        }
+        else
+        {
+            log_e("data cJSON - Unknown parsing error");
+        }
+        return;
+    }
+    auto messageType = static_cast<MessageType>(messageTypeInt->valueint);
     switch(messageType)
     {
         case SET_TIME:
-            parseSetTime(buffer);
+            parseSetTime(dataJson);
         break;
         case SET_STATION_STATE:
-            parseSetStationState(buffer);
+            parseSetStationState(dataJson);
         break;
         case REQUEST_NOTIFY:
             notifyStationStates();
@@ -353,21 +378,13 @@ void Bluetooth::parseCharacteristicWrite(const std::vector<char>& buffer, Messag
         default:
         break;
     }
+    cJSON_free(json);
 }
 
-void Bluetooth::parseSetTime(const std::vector<char>& buffer) const
+void Bluetooth::parseSetTime(const cJSON* json) const
 {    
     if (m_pCallback)
     {
-        cJSON *json = cJSON_Parse(&buffer[0]);
-        if (json == NULL)
-        {
-            const char *error_ptr = cJSON_GetErrorPtr();
-            if (error_ptr != NULL)
-            {
-                log_e("Error before: %s", error_ptr);
-            }
-        }
         SetTimeMessage message;        
         auto tv_sec = cJSON_GetObjectItemCaseSensitive(json, "tv_sec");
         auto tv_usec = cJSON_GetObjectItemCaseSensitive(json, "tv_usec");
@@ -375,30 +392,19 @@ void Bluetooth::parseSetTime(const std::vector<char>& buffer) const
         message.timeval.tv_sec = cJSON_IsNumber(tv_sec) ? tv_sec->valueint : 0;
         message.timeval.tv_usec = cJSON_IsNumber(tv_usec) ? tv_usec->valueint : 0;
         message.tz = cJSON_IsString(tz_str) ? tz_str->valuestring : "";
-        cJSON_free(json);
         m_pCallback->onMessageReceived(MessageType::SET_TIME, (void*)&message);
     }
 }
 
-void Bluetooth::parseSetStationState(const std::vector<char>& buffer) const
+void Bluetooth::parseSetStationState(const cJSON* json) const
 {
     if (m_pCallback)
     {
-        cJSON *json = cJSON_Parse(&buffer[0]);
-        if (json == NULL)
-        {
-            const char *error_ptr = cJSON_GetErrorPtr();
-            if (error_ptr != NULL)
-            {
-                log_e("Error before: %s", error_ptr);
-            }
-        }
         SetStationStateMessage message;
         auto id = cJSON_GetObjectItemCaseSensitive(json, "station_id");
         auto state = cJSON_GetObjectItemCaseSensitive(json, "is_on");
         message.station_id = cJSON_IsNumber(id) ? id->valueint : -1;
         message.is_on = cJSON_IsBool(state) ? cJSON_IsTrue(state) : false;
-        cJSON_free(json);
         m_pCallback->onMessageReceived(MessageType::SET_STATION_STATE, (void*)&message);
     }
 }

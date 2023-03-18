@@ -11,7 +11,7 @@
     class Storage;
     class DS1307;
     class CronManager;
-    class LiquidCrystal_I2C;
+    class TFT_eSPI;
 
     class WaterManager : public BlablaCallbacks
     {
@@ -40,5 +40,5 @@
         Storage* m_storage;
         DS1307* m_rtc;
         CronManager* m_cronManager;
-        LiquidCrystal_I2C* m_lcd;
+        TFT_eSPI* m_lcd;
     };

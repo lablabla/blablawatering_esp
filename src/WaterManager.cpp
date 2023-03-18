@@ -1,11 +1,13 @@
 
 #include "WaterManager.h"
 
-#include <LiquidCrystal_I2C.h>
+
 #include "Storage.h"
 #include "Bluetooth.h"
 #include "DS1307.h"
 #include "CronManager.h"
+#include "TFT_eSPI.h" 
+#define TEXT "aA MWyz~12" // Text that will be printed on screen in any font
 
 #include "esp32-hal-log.h"
 #include "freertos/FreeRTOS.h"
@@ -16,12 +18,17 @@
 WaterManager::WaterManager() :
     m_backgroundTaskHandle(nullptr)
 {
-    m_lcd = new LiquidCrystal_I2C(0x27, 20, 4);
-    m_lcd->init();
-    m_lcd->backlight();
-    m_lcd->noBlink();
-    m_lcd->setCursor(3, 1);
-    m_lcd->print("Initializing...");
+    m_lcd = new TFT_eSPI();
+  m_lcd->init();
+  m_lcd->setRotation(1);
+  m_lcd->fillScreen(TFT_BLUE);
+  m_lcd->setTextSize(2);
+  m_lcd->setTextColor(TFT_WHITE);
+  m_lcd->setCursor(0, 0);
+  
+  m_lcd->setTextFont(1);                 // Select the font
+  m_lcd->drawString("Meow!", 160, 60);// Print the string name of the font
+  m_lcd->drawString(TEXT, 160, 120);// Print the string name of the font
 
     log_i("Initializing storage\n");
     m_storage = new Storage();    
@@ -57,7 +64,6 @@ WaterManager::WaterManager() :
 
     log_i("Water Manager initialized\n");
     delay(1000);
-    m_lcd->clear();
 }
 
 WaterManager::~WaterManager()
@@ -75,11 +81,6 @@ void WaterManager::loop()
     struct timeval now;
     gettimeofday(&now, NULL);
     auto time = localtime(&now.tv_sec);
-    
-    // m_lcd->clear();
-    m_lcd->setCursor(3, 1);
-    m_lcd->printf("%02d:%02d:%02d", time->tm_hour,
-		   time->tm_min, time->tm_sec);
 }
 
 void WaterManager::updateTimeFromRTC()

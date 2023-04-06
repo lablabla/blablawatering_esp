@@ -161,20 +161,14 @@ void Bluetooth::notifyStationStates() const
 {
     auto stationStatesChr = getCharacteristicByUUIDs(SERVICE_UUID, NOTIFY_STATION_STATUS_CHR_UUID);
     if (stationStatesChr != nullptr)
-    {
-        cJSON* array = cJSON_CreateArray();
-        for (const auto& station : m_pStorage->getStations())
-        {            
-            cJSON* object = cJSON_CreateObject();
-            cJSON_AddNumberToObject(object, "id", station.second.id);
-            cJSON_AddBoolToObject(object, "is_on", station.second.is_on);
-            cJSON_AddItemToArray(array, object);
-        }
-        auto json_cstr = cJSON_PrintUnformatted(array);
+    {        
+        std::vector<Station> stationVec = to_vector(m_pStorage->getStations());
+        auto json = stationsToJson(stationVec);
+        auto json_cstr = cJSON_PrintUnformatted(json);
         std::string statesJsonStr(json_cstr);
         log_i("Notifying Stations states JSON:%s", statesJsonStr.c_str());
         stationStatesChr->notify(statesJsonStr);
-        cJSON_Delete(array);
+        cJSON_Delete(json);
         cJSON_free(json_cstr);
     }
 }

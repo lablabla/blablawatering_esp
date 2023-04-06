@@ -25,7 +25,7 @@ Storage::Storage()
     mount_config.max_files = 4;
     mount_config.format_if_mount_failed = true;
     mount_config.allocation_unit_size = CONFIG_WL_SECTOR_SIZE;
-    esp_err_t err = esp_vfs_fat_spiflash_mount(BASE_PATH, "storage", &mount_config, &s_wl_handle);
+    esp_err_t err = esp_vfs_fat_spiflash_mount(BASE_PATH, "spiffs", &mount_config, &s_wl_handle);
     if (err != ESP_OK) {
         log_e("Failed to mount FATFS (%s)", esp_err_to_name(err));
         return;
